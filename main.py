@@ -155,8 +155,21 @@ def update_branch(branch_id: int, branch: BranchCreate, db: Session = Depends(ge
     db_branch = db.query(Branch).filter(Branch.id == branch_id).first()
     if not db_branch:
         raise HTTPException(status_code=404, detail="Branch not found")
+
+
+    try:
+        if branch.latitude is not None:
+            float(branch.latitude)
+        if branch.longitude is not None:
+            float(branch.longitude)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Latitude and longitude must be valid numbers")
+
+    # Update only non-None fields
     for var, value in vars(branch).items():
-        setattr(db_branch, var, value) if value else None
+        if value is not None:
+            setattr(db_branch, var, value)
+
     db.commit()
     db.refresh(db_branch)
     return db_branch
