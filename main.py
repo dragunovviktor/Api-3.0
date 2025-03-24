@@ -128,11 +128,26 @@ def get_db():
 # Эндпоинты для администраторов
 @app.post("/api/branches", response_model=BranchCreate)
 def create_branch(branch: BranchCreate, db: Session = Depends(get_db)):
+    # Проверяем уникальность internal_code
+    existing = db.query(Branch).filter(Branch.internal_code == branch.internal_code).first()
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Филиал с кодом {branch.internal_code} уже существует"
+        )
+
     db_branch = Branch(**branch.dict())
     db.add(db_branch)
     db.commit()
     db.refresh(db_branch)
-    return db_branch
+
+    # Возвращаем данные в формате Pydantic модели
+    return {
+        "address": db_branch.address,
+        "internal_code": db_branch.internal_code,
+        "latitude": db_branch.latitude,
+        "longitude": db_branch.longitude
+    }
 
 
 @app.put("/api/branches/{branch_id}", response_model=BranchCreate)
@@ -204,50 +219,119 @@ async def upload_attachment(
 # Эндпоинты для чат-бота
 @app.get("/api/branches", response_model=List[BranchCreate])
 def search_branches(search: str = "", db: Session = Depends(get_db)):
-    return db.query(Branch).filter(
+    branches = db.query(Branch).filter(
         (Branch.address.ilike(f"%{search}%")) |
         (Branch.internal_code.ilike(f"%{search}%"))
     ).all()
 
+    # Преобразуем SQLAlchemy объекты в словари
+    return [
+        {
+            "address": branch.address,
+            "internal_code": branch.internal_code,
+            "latitude": branch.latitude,
+            "longitude": branch.longitude
+        }
+        for branch in branches
+    ]
 
 @app.get("/api/branches/{branch_id}/objects", response_model=List[ObjectCreate])
 def get_branch_objects(branch_id: int, db: Session = Depends(get_db)):
-    return db.query(BranchObject).filter(BranchObject.branch_id == branch_id).all()
+    objects = db.query(BranchObject).filter(BranchObject.branch_id == branch_id).all()
+    return [
+        {
+            "branch_id": obj.branch_id,
+            "object_type_id": obj.object_type_id,
+            "name": obj.name,
+            "area": obj.area,
+            "description": obj.description
+        }
+        for obj in objects
+    ]
 
 
 @app.get("/api/branches/{branch_id}/plans", response_model=List[MaintenancePlanCreate])
 def get_branch_plans(branch_id: int, db: Session = Depends(get_db)):
-    return db.query(MaintenancePlan).filter(MaintenancePlan.branch_id == branch_id).all()
-
+    plans = db.query(MaintenancePlan).filter(MaintenancePlan.branch_id == branch_id).all()
+    return [
+        {
+            "branch_id": plan.branch_id,
+            "object_id": plan.object_id,
+            "work_type": plan.work_type,
+            "frequency": plan.frequency,
+            "next_maintenance_date": plan.next_maintenance_date
+        }
+        for plan in plans
+    ]
 
 @app.get("/api/branches/{branch_id}/completed-works", response_model=List[CompletedWorkCreate])
 def get_branch_completed_works(branch_id: int, db: Session = Depends(get_db)):
-    return db.query(CompletedWork).filter(CompletedWork.branch_id == branch_id).all()
-
+    works = db.query(CompletedWork).filter(CompletedWork.branch_id == branch_id).all()
+    return [
+        {
+            "branch_id": work.branch_id,
+            "object_id": work.object_id,
+            "work_type": work.work_type,
+            "completion_date": work.completion_date,
+            "responsible_person": work.responsible_person,
+            "notes": work.notes
+        }
+        for work in works
+    ]
 
 @app.get("/api/branches/{branch_id}/attachments", response_model=List[dict])
 def get_branch_attachments(branch_id: int, db: Session = Depends(get_db)):
     attachments = db.query(BranchAttachment).filter(BranchAttachment.branch_id == branch_id).all()
-    return [{"file_type": a.file_type, "file_url": a.file_url} for a in attachments]
+    return [
+        {
+            "id": attachment.id,
+            "branch_id": attachment.branch_id,
+            "object_id": attachment.object_id,
+            "file_type": attachment.file_type,
+            "file_url": attachment.file_url,
+            "uploaded_at": attachment.uploaded_at
+        }
+        for attachment in attachments
+    ]
 
-
-# NLP обработка запросов
 @app.get("/api/nlp-query")
 def process_nlp_query(query: str, db: Session = Depends(get_db)):
-    # Простейшая реализация NLP обработки
     if "планируется" in query.lower() or "планы" in query.lower():
-        # Ищем номер ВСП в запросе
         branch_code = "".join([c for c in query if c.isdigit()])
         if branch_code:
-            return get_branch_plans(int(branch_code), db)
+            try:
+                plans = get_branch_plans(int(branch_code), db)
+                return {
+                    "status": "success",
+                    "data": plans,
+                    "message": f"Найдены планы для филиала {branch_code}"
+                }
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "message": f"Ошибка при получении планов: {str(e)}"
+                }
 
     elif "выполнено" in query.lower() or "сделано" in query.lower():
         branch_code = "".join([c for c in query if c.isdigit()])
         if branch_code:
-            return get_branch_completed_works(int(branch_code), db)
+            try:
+                works = get_branch_completed_works(int(branch_code), db)
+                return {
+                    "status": "success",
+                    "data": works,
+                    "message": f"Найдены выполненные работы для филиала {branch_code}"
+                }
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "message": f"Ошибка при получении выполненных работ: {str(e)}"
+                }
 
-    return {"message": "Не удалось обработать запрос. Уточните параметры поиска."}
-
+    return {
+        "status": "not_found",
+        "message": "Не удалось обработать запрос. Уточните параметры поиска."
+    }
 
 if __name__ == "__main__":
     import uvicorn
