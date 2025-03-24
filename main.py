@@ -7,6 +7,7 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, 
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 import uuid
+from typing import List, Optional, Union
 
 DATABASE_URL = "postgresql://sber_admin:securepass@db:5432/sber_api"
 engine = create_engine(DATABASE_URL)
