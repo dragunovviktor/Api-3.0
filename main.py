@@ -87,8 +87,10 @@ app = FastAPI(
 class BranchCreate(BaseModel):
     address: str
     internal_code: str
-    latitude: str
-    longitude: str
+    latitude: Optional[Union[float, str]] = None  # Принимаем и float, и string
+    longitude: Optional[Union[float, str]] = None
+
+
 
 
 class ObjectCreate(BaseModel):
