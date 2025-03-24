@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from typing import List, Optional
 from datetime import datetime
 import os
@@ -8,6 +8,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 import uuid
 from typing import List, Optional, Union
+from pydantic import field_validator
 
 DATABASE_URL = "postgresql://sber_admin:securepass@db:5432/sber_api"
 engine = create_engine(DATABASE_URL)
