@@ -120,11 +120,10 @@ class BranchResponse(BranchBase):
 
 class ObjectCreate(BaseModel):
     branch_id: int
-    object_id: Optional[int] = None
+    object_type_id: int
     name: str
     area: str
     description: Optional[str] = None
-
 
 class MaintenancePlanCreate(BaseModel):
     branch_id: int
@@ -208,11 +207,32 @@ def update_branch(branch_id: int, branch: BranchCreate, db: Session = Depends(ge
 
 @app.post("/api/objects", response_model=ObjectCreate)
 def create_object(obj: ObjectCreate, db: Session = Depends(get_db)):
-    db_object = BranchObject(**obj.dict())
+    # Проверяем существование branch и object_type
+    if not db.query(Branch).filter(Branch.id == obj.branch_id).first():
+        raise HTTPException(status_code=404, detail="Филиал не найден")
+
+    if not db.query(ObjectType).filter(ObjectType.id == obj.object_type_id).first():
+        raise HTTPException(status_code=404, detail="Тип объекта не найден")
+
+    db_object = BranchObject(
+        branch_id=obj.branch_id,
+        object_type_id=obj.object_type_id,
+        name=obj.name,
+        area=obj.area,
+        description=obj.description
+    )
+
     db.add(db_object)
     db.commit()
     db.refresh(db_object)
-    return db_object
+
+    return {
+        "branch_id": db_object.branch_id,
+        "object_type_id": db_object.object_type_id,
+        "name": db_object.name,
+        "area": db_object.area,
+        "description": db_object.description
+    }
 
 
 @app.post("/api/maintenance", response_model=MaintenancePlanCreate)
