@@ -8,7 +8,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 import uuid
 from typing import List, Optional, Union
-from pydantic import field_validator
+
 
 DATABASE_URL = "postgresql://sber_admin:securepass@db:5432/sber_api"
 engine = create_engine(DATABASE_URL)
@@ -171,6 +171,22 @@ def create_branch(branch: BranchCreate, db: Session = Depends(get_db)):
     db.refresh(db_branch)
     return db_branch
 
+
+@app.put("/api/branches/by-code/{internal_code}", response_model=BranchResponse)
+def update_branch_by_code(internal_code: str, branch: BranchBase, db: Session = Depends(get_db)):
+    # Находим филиал по internal_code
+    db_branch = db.query(Branch).filter(Branch.internal_code == internal_code).first()
+    if not db_branch:
+        raise HTTPException(status_code=404, detail="Филиал с указанным кодом не найден")
+
+    # Обновляем только переданные поля (исключая internal_code)
+    update_data = branch.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(db_branch, field, value)
+
+    db.commit()
+    db.refresh(db_branch)
+    return db_branch
 
 @app.put("/api/branches/{branch_id}", response_model=BranchResponse)
 def update_branch(branch_id: int, branch: BranchCreate, db: Session = Depends(get_db)):
