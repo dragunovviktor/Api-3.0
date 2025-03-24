@@ -21,8 +21,8 @@ class Branch(Base):
     id = Column(Integer, primary_key=True, index=True)
     address = Column(String, index=True)
     internal_code = Column(String, unique=True)
-    latitude = Column(Float)
-    longitude = Column(Float)
+    latitude = Column(String)
+    longitude = Column(String)
 
 
 class ObjectType(Base):
@@ -38,7 +38,7 @@ class BranchObject(Base):
     branch_id = Column(Integer, ForeignKey("branches.id"))
     object_type_id = Column(Integer, ForeignKey("object_types.id"))
     name = Column(String)
-    area = Column(Float)
+    area = Column(String)
     description = Column(String)
 
 
@@ -87,15 +87,15 @@ app = FastAPI(
 class BranchCreate(BaseModel):
     address: str
     internal_code: str
-    latitude: float
-    longitude: float
+    latitude: str
+    longitude: str
 
 
 class ObjectCreate(BaseModel):
     branch_id: int
     object_type_id: int
     name: str
-    area: float
+    area: str
     description: Optional[str] = None
 
 
