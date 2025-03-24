@@ -85,18 +85,41 @@ app = FastAPI(
 )
 
 # Pydantic модели
+
+class BranchBase(BaseModel):
+    address: str
+    internal_code: str
+
+
 class BranchCreate(BaseModel):
     address: str
     internal_code: str
     latitude: Optional[Union[float, str]] = None  # Принимаем и float, и string
     longitude: Optional[Union[float, str]] = None
 
+class BranchCreate(BranchBase):
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
+    @validator('latitude', 'longitude')
+    def validate_coordinates(cls, v):
+        if v is not None:
+            try:
+                float(v)
+            except ValueError:
+                raise ValueError("Координата должна быть числом")
+        return v
 
+class BranchResponse(BranchBase):
+    latitude: Optional[str] = None
+    longitude: Optional[str] = None
+
+    class Config:
+        orm_mode = True
 
 class ObjectCreate(BaseModel):
     branch_id: int
-    object_type_id: int
+    object_id: Optional[int] = None
     name: str
     area: str
     description: Optional[str] = None
@@ -129,49 +152,37 @@ def get_db():
 
 
 # Эндпоинты для администраторов
-@app.post("/api/branches", response_model=BranchCreate)
+@app.post("/api/branches", response_model=BranchResponse)
 def create_branch(branch: BranchCreate, db: Session = Depends(get_db)):
-    # Проверяем уникальность internal_code
     existing = db.query(Branch).filter(Branch.internal_code == branch.internal_code).first()
     if existing:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Филиал с кодом {branch.internal_code} уже существует"
-        )
+        raise HTTPException(status_code=400, detail="Филиал с таким кодом уже существует")
 
-    db_branch = Branch(**branch.dict())
+    db_branch = Branch(
+        address=branch.address,
+        internal_code=branch.internal_code,
+        latitude=str(branch.latitude) if branch.latitude is not None else None,
+        longitude=str(branch.longitude) if branch.longitude is not None else None
+    )
+
     db.add(db_branch)
     db.commit()
     db.refresh(db_branch)
-
-    # Возвращаем данные в формате Pydantic модели
-    return {
-        "address": db_branch.address,
-        "internal_code": db_branch.internal_code,
-        "latitude": db_branch.latitude,
-        "longitude": db_branch.longitude
-    }
+    return db_branch
 
 
-@app.put("/api/branches/{branch_id}", response_model=BranchCreate)
+@app.put("/api/branches/{branch_id}", response_model=BranchResponse)
 def update_branch(branch_id: int, branch: BranchCreate, db: Session = Depends(get_db)):
     db_branch = db.query(Branch).filter(Branch.id == branch_id).first()
     if not db_branch:
-        raise HTTPException(status_code=404, detail="Branch not found")
+        raise HTTPException(status_code=404, detail="Филиал не найден")
 
-
-    try:
-        if branch.latitude is not None:
-            float(branch.latitude)
-        if branch.longitude is not None:
-            float(branch.longitude)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Latitude and longitude must be valid numbers")
-
-    # Update only non-None fields
-    for var, value in vars(branch).items():
-        if value is not None:
-            setattr(db_branch, var, value)
+    update_data = branch.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        if field in ['latitude', 'longitude'] and value is not None:
+            setattr(db_branch, field, str(value))
+        elif value is not None:
+            setattr(db_branch, field, value)
 
     db.commit()
     db.refresh(db_branch)
